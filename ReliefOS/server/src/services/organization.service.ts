@@ -8,6 +8,8 @@ type CreateOrganizationData = {
   type: OrganizationType;
   email: string;
   location?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 type UpdateOrganizationData = Partial<CreateOrganizationData>;

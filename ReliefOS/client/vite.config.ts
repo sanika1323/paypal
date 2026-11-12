@@ -11,6 +11,12 @@ export default defineConfig({
         target: 'http://localhost:4000',
         changeOrigin: true,
       },
+      // Python agent service (agents + MCP server)
+      '/agent-service': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/agent-service/, ''),
+      },
     },
   },
 })

@@ -32,7 +32,7 @@ export const submitProcurementPlanForApproval = async (
 
     await tx.procurementPlan.update({
       where: { id: planId },
-      data: { status: "PENDING_APPROVAL" },
+      data: { version: { increment: 1 }, status: "PENDING_APPROVAL" },
     });
 
     await tx.auditLog.create({
@@ -136,7 +136,7 @@ export const decideProcurementApproval = async (
 
     await tx.procurementPlan.update({
       where: { id: approval.planId },
-      data: { status: newStatus },
+      data: { version: { increment: 1 }, status: newStatus },
     });
 
     await tx.auditLog.create({

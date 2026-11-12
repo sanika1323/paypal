@@ -58,6 +58,8 @@ model Organization {
   type      OrganizationType
   email     String           @unique
   location  String?
+  latitude  Float?
+  longitude Float?
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
@@ -72,6 +74,8 @@ model Emergency {
   location    String
   severity    String
   isActive    Boolean  @default(true)
+  latitude    Float?
+  longitude   Float?
   createdAt   DateTime @default(now())
 
   requests ReliefRequest[]
@@ -114,9 +118,12 @@ model Vendor {
   location    String
   email       String?
   reliability Float    @default(0)
+  latitude    Float?
+  longitude   Float?
   createdAt   DateTime @default(now())
 
-  offers VendorOffer[]
+  offers          VendorOffer[]
+  failureEvents   SupplierFailureEvent[]
 }
 
 model VendorOffer {
@@ -126,11 +133,14 @@ model VendorOffer {
   unitPrice    Decimal  @db.Decimal(12, 2)
   capacity     Int
   deliveryDays Int
-  createdAt    DateTime @default(now())
+  isAvailable  Boolean   @default(true)
+  validUntil   DateTime?
+  createdAt    DateTime  @default(now())
 
-  vendor    Vendor                @relation(fields: [vendorId], references: [id])
-  product   Product               @relation(fields: [productId], references: [id])
-  purchases ProcurementPurchase[]
+  vendor        Vendor                 @relation(fields: [vendorId], references: [id])
+  product       Product                @relation(fields: [productId], references: [id])
+  purchases     ProcurementPurchase[]
+  failureEvents SupplierFailureEvent[]
 }
 
 model ProcurementPlan {
@@ -140,8 +150,16 @@ model ProcurementPlan {
   totalBudget Decimal           @db.Decimal(14, 2)
   status      ProcurementStatus @default(DRAFT)
   explanation String?
+  version     Int               @default(1)
+  revisionOfId String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+
+  revisionOf  ProcurementPlan?  @relation("PlanRevisions", fields: [revisionOfId], references: [id])
+  revisions   ProcurementPlan[] @relation("PlanRevisions")
+  failureEvents      SupplierFailureEvent[]
+  sourceProposals    ReplanningProposal[]   @relation("ProposalSource")
+  committedProposal  ReplanningProposal?    @relation("ProposalCommitted")
 
   emergency   Emergency             @relation(fields: [emergencyId], references: [id])
   allocations Allocation[]
@@ -211,12 +229,19 @@ model Delivery {
   estimatedAt           DateTime?
   deliveredAt           DateTime?
   failureReason         String?
+  dispatchedQuantity    Int            @default(0)
+  deliveredQuantity     Int            @default(0)
+  delayReason           String?
+  receivedBy            String?
+  receivedAt            DateTime?
+  receiptNotes          String?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
   payment             Payment?             @relation(fields: [paymentId], references: [id])
   procurementPurchase ProcurementPurchase? @relation(fields: [procurementPurchaseId], references: [id])
   allocation          Allocation?          @relation(fields: [allocationId], references: [id])
+  failureEvents       SupplierFailureEvent[]
 }
 
 model AuditLog {
@@ -258,3 +283,183 @@ model ProcurementPurchase {
   vendorOffer VendorOffer         @relation(fields: [vendorOfferId], references: [id])
   deliveries  Delivery[]
 }
+
+// ---------------------------------------------------------------------------
+// Replanning, revalidation and agent workflows (additive, 2026-11-12)
+// ---------------------------------------------------------------------------
+
+enum SupplierFailureType {
+  ORDER_CANCELLED
+  INSUFFICIENT_STOCK
+  CAPACITY_REDUCED
+  SUPPLIER_UNAVAILABLE
+  OFFER_EXPIRED
+  PRICE_CHANGED
+  DELIVERY_DELAYED
+  WHAT_IF_SCENARIO
+}
+
+enum ProposalMode {
+  REPLACEMENT
+  AMENDMENT
+}
+
+enum ProposalStatus {
+  DRAFT
+  VALIDATED
+  VALIDATED_WITH_WARNINGS
+  REQUIRES_HUMAN_REVIEW
+  REJECTED_INFEASIBLE
+  REJECTED_STALE_DATA
+  REJECTED_VERSION_CONFLICT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+enum ValidationOutcome {
+  VALIDATED
+  VALIDATED_WITH_WARNINGS
+  REJECTED_INFEASIBLE
+  REJECTED_STALE_DATA
+  REJECTED_VERSION_CONFLICT
+  REQUIRES_HUMAN_REVIEW
+}
+
+enum WorkflowStatus {
+  RUNNING
+  WAITING_FOR_HUMAN
+  COMPLETED
+  FAILED
+}
+
+enum StepKind {
+  AI_REASONING
+  MCP_TOOL
+  DETERMINISTIC
+  PERSISTED_MUTATION
+  SIMULATION
+  HUMAN_ACTION
+}
+
+model SupplierFailureEvent {
+  id                   String              @id @default(cuid())
+  type                 SupplierFailureType
+  vendorId             String
+  vendorOfferId        String?
+  planId               String?
+  deliveryId           String?
+  affectedQuantity     Int?
+  reportedCapacity     Int?
+  reportedUnitPrice    Decimal?            @db.Decimal(12, 2)
+  reportedDeliveryDays Int?
+  reason               String
+  isSimulation         Boolean             @default(false)
+  reportedBy           String
+  idempotencyKey       String?             @unique
+  createdAt            DateTime            @default(now())
+
+  vendor      Vendor               @relation(fields: [vendorId], references: [id])
+  vendorOffer VendorOffer?         @relation(fields: [vendorOfferId], references: [id])
+  plan        ProcurementPlan?     @relation(fields: [planId], references: [id])
+  delivery    Delivery?            @relation(fields: [deliveryId], references: [id])
+  proposals   ReplanningProposal[]
+}
+
+model ReplanningProposal {
+  id                String         @id @default(cuid())
+  workflowId        String?
+  mode              ProposalMode
+  status            ProposalStatus @default(DRAFT)
+  sourcePlanId      String
+  sourcePlanVersion Int
+  failureEventId    String?
+  isSimulation      Boolean        @default(false)
+  budget            Decimal        @db.Decimal(14, 2)
+  maxDeliveryDays   Int?
+  scenario          Json
+  candidate         Json
+  comparison        Json
+  inputFingerprint  String
+  rationale         String?
+  createdBy         String
+  decidedBy         String?
+  decisionComment   String?
+  decidedAt         DateTime?
+  committedPlanId   String?        @unique
+  idempotencyKey    String?        @unique
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  sourcePlan    ProcurementPlan       @relation("ProposalSource", fields: [sourcePlanId], references: [id])
+  committedPlan ProcurementPlan?      @relation("ProposalCommitted", fields: [committedPlanId], references: [id])
+  failureEvent  SupplierFailureEvent? @relation(fields: [failureEventId], references: [id])
+  validations   ValidationReport[]
+}
+
+model ValidationReport {
+  id               String             @id @default(cuid())
+  proposalId       String
+  workflowId       String?
+  outcome          ValidationOutcome
+  agentOutcome     ValidationOutcome?
+  validator        String
+  checks           Json
+  recomputed       Json?
+  inputFingerprint String
+  createdAt        DateTime           @default(now())
+
+  proposal ReplanningProposal @relation(fields: [proposalId], references: [id])
+}
+
+model AgentWorkflow {
+  id             String         @id @default(cuid())
+  type           String
+  status         WorkflowStatus @default(RUNNING)
+  trigger        String
+  emergencyId    String?
+  planId         String?
+  proposalId     String?
+  failureEventId String?
+  isSimulation   Boolean        @default(false)
+  state          Json
+  checkpoint     String?
+  error          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  steps AgentStep[]
+}
+
+model AgentStep {
+  id            String   @id @default(cuid())
+  workflowId    String
+  sequence      Int
+  agent         String
+  kind          StepKind
+  tool          String?
+  status        String
+  inputSummary  Json?
+  outputSummary Json?
+  error         String?
+  attempt       Int      @default(1)
+  correlationId String?
+  startedAt     DateTime
+  durationMs    Int
+  createdAt     DateTime @default(now())
+
+  workflow AgentWorkflow @relation(fields: [workflowId], references: [id])
+
+  @@unique([workflowId, sequence])
+}
+
+model IdempotencyKey {
+  key         String   @id
+  scope       String
+  requestHash String
+  statusCode  Int
+  response    Json
+  createdAt   DateTime @default(now())
+}
+

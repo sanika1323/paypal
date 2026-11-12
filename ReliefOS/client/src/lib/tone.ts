@@ -25,9 +25,38 @@ const TONE_BY_STATUS: Record<string, Tone> = {
   IN_TRANSIT: 'cyan',
   DELIVERED: 'green',
   DELAYED: 'amber',
-  // orchestrator
-  PARTIAL: 'amber',
+  // replanning / validation
+  VALIDATED: 'green',
+  VALIDATED_WITH_WARNINGS: 'amber',
+  REQUIRES_HUMAN_REVIEW: 'purple',
+  REJECTED_INFEASIBLE: 'red',
+  REJECTED_STALE_DATA: 'red',
+  REJECTED_VERSION_CONFLICT: 'red',
+  SUPERSEDED: 'neutral',
+  REPLACEMENT: 'blue',
+  AMENDMENT: 'purple',
+  PASS: 'green',
+  WARN: 'amber',
+  FAIL: 'red',
+  // workflows
+  RUNNING: 'cyan',
+  WAITING_FOR_HUMAN: 'amber',
+  OBSERVED: 'purple',
   SKIPPED: 'neutral',
+  // risk
+  LOW: 'green',
+  MEDIUM: 'amber',
+  HIGH: 'red',
+}
+
+/** Step kinds in an agent trace: what kind of work happened, so AI text is never mistaken for a fact. */
+export const STEP_KIND_TONE: Record<string, Tone> = {
+  AI_REASONING: 'purple',
+  MCP_TOOL: 'blue',
+  DETERMINISTIC: 'cyan',
+  PERSISTED_MUTATION: 'green',
+  SIMULATION: 'amber',
+  HUMAN_ACTION: 'red',
 }
 
 export function toneForStatus(status: string): Tone {

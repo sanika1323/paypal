@@ -18,21 +18,47 @@ export const runSupplierAgent = async (
     (product) => product.productId
   );
 
-  // Fetch real supplier offers from the database.
-  const offers = await prisma.vendorOffer.findMany({
-    where: {
-      productId: {
-        in: productIds,
-      },
-      capacity: {
-        gt: 0,
-      },
-    },
-    include: {
-      vendor: true,
-      product: true,
-    },
+  // Fetch real supplier offers from the database (all of them: unusable ones are reported, not hidden).
+  const allOffers = await prisma.vendorOffer.findMany({
+    where: { productId: { in: productIds } },
+    include: { vendor: true, product: true },
   });
+  const now = Date.now();
+  const offerState = (offer: (typeof allOffers)[number]) =>
+    !offer.isAvailable
+      ? "UNAVAILABLE"
+      : offer.validUntil && offer.validUntil.getTime() < now
+        ? "EXPIRED"
+        : offer.capacity <= 0
+          ? "NO_CAPACITY"
+          : "USABLE";
+  const offers = allOffers.filter((offer) => offerState(offer) === "USABLE");
+  const unusableOffers = allOffers
+    .filter((offer) => offerState(offer) !== "USABLE")
+    .map((offer) => ({
+      offerId: offer.id,
+      vendorName: offer.vendor.name,
+      productName: offer.product.name,
+      state: offerState(offer),
+      validUntil: offer.validUntil,
+    }));
+
+  // Supplier risk: reliability plus REAL failure events in the last 90 days (simulations excluded).
+  const since = new Date(now - 90 * 24 * 60 * 60 * 1000);
+  const failures = await prisma.supplierFailureEvent.groupBy({
+    by: ["vendorId"],
+    where: { isSimulation: false, createdAt: { gte: since }, vendorId: { in: [...new Set(allOffers.map((o) => o.vendorId))] } },
+    _count: { _all: true },
+  });
+  const failureCount = new Map(failures.map((row) => [row.vendorId, row._count._all]));
+  const riskOf = (vendorId: string, reliability: number) => {
+    const recentFailures = failureCount.get(vendorId) ?? 0;
+    const rated = reliability > 0;
+    const failurePart = Math.min(recentFailures, 5) / 5;
+    // Unrated suppliers are scored on failure history only (a 0 rating means "not rated").
+    const score = Number((rated ? 0.6 * (1 - Math.min(1, reliability)) + 0.4 * failurePart : failurePart).toFixed(3));
+    return { reliabilityRated: rated, recentFailures, riskScore: score, riskLevel: score >= 0.5 ? "HIGH" : score >= 0.25 ? "MEDIUM" : "LOW" };
+  };
 
   const products = demand.products.map((product) => {
     const productOffers = offers
@@ -76,6 +102,8 @@ export const runSupplierAgent = async (
           vendorName: offer.vendor.name,
           vendorLocation: offer.vendor.location,
           vendorReliability: offer.vendor.reliability,
+          ...riskOf(offer.vendorId, offer.vendor.reliability),
+          validUntil: offer.validUntil,
           productId: offer.productId,
           unitPrice: unitPrice.toFixed(2),
           capacity: offer.capacity,
@@ -140,6 +168,9 @@ export const runSupplierAgent = async (
       ).length,
     },
     products,
+    unusableOffers,
+    riskMethod:
+      "riskScore = 0.6 × (1 − reliability) + 0.4 × min(real failures in 90 days, 5)/5; unrated suppliers (reliability 0) are scored on failures only. Simulations are excluded.",
     methodology:
       "Supplier offers are evaluated using stored capacity, unit price, delivery time and vendor reliability. Offers are ranked by unit price, delivery time and reliability. No inventory is reserved and no supplier offer is modified.",
     generatedAt: new Date().toISOString(),

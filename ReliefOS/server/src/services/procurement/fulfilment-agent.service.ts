@@ -27,6 +27,7 @@ export const runFulfilmentAgent = async (
       items: {
         include: {
           product: true,
+          allocations: true,
           purchases: {
             include: {
               vendorOffer: {
@@ -80,6 +81,10 @@ export const runFulfilmentAgent = async (
         destination: delivery.destination,
         quantity: delivery.quantity,
         status: delivery.status,
+        dispatchedQuantity: delivery.dispatchedQuantity,
+        deliveredQuantity: delivery.deliveredQuantity,
+        delayReason: delivery.delayReason,
+        failureReason: delivery.failureReason,
         estimatedAt: delivery.estimatedAt,
         deliveredAt: delivery.deliveredAt,
       })),
@@ -121,8 +126,31 @@ export const runFulfilmentAgent = async (
       nextAction = "DELIVERY_IN_PROGRESS";
     }
 
+    const quantities = {
+      allocated: plan.items.reduce((s, i) => s + i.allocations.reduce((a, x) => a + x.quantity, 0), 0),
+      purchased: plan.items.reduce((s, i) => s + i.purchasedQuantity, 0),
+      dispatched: deliveryRecords.reduce((s, d) => s + d.dispatchedQuantity, 0),
+      delivered: deliveryRecords.reduce((s, d) => s + d.deliveredQuantity, 0),
+      delayed: deliveryRecords.filter((d) => d.status === "DELAYED").reduce((s, d) => s + d.quantity, 0),
+      failedOrShort: deliveryRecords.reduce(
+        (s, d) => s + (d.status === "FAILED" || d.status === "DELIVERED" ? d.quantity - d.deliveredQuantity : 0),
+        0
+      ),
+    };
+    const blockers: string[] = [];
+    if (plan.status === "DRAFT") blockers.push("Plan not yet submitted for approval.");
+    if (plan.status === "PENDING_APPROVAL") blockers.push("Awaiting human approval.");
+    if (plan.status === "APPROVED" && payments.length === 0) blockers.push("Approved but not paid.");
+    if (payments.some((p) => ["PENDING", "APPROVED", "PROCESSING"].includes(p.status))) blockers.push("Payment awaiting PayPal capture.");
+    if (payments.some((p) => p.status === "COMPLETED") && deliveryRecords.length === 0) blockers.push("Paid, but no delivery records generated.");
+    if (quantities.delayed > 0) blockers.push(`${quantities.delayed} unit(s) delayed.`);
+    if (quantities.failedOrShort > 0) blockers.push(`${quantities.failedOrShort} unit(s) failed or short-delivered: needs an amendment proposal.`);
+
     return {
       planId: plan.id,
+      planVersion: plan.version,
+      quantities,
+      blockers,
       planName: plan.name,
       planStatus: plan.status,
       totalBudget: plan.totalBudget.toString(),

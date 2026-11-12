@@ -4,12 +4,18 @@ type CreateVendorData = {
   name: string;
   location: string;
   email?: string;
+  reliability?: number;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 type UpdateVendorData = {
   name?: string;
   location?: string;
   email?: string;
+  reliability?: number;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export const createVendor = async (data: CreateVendorData) => {
@@ -28,6 +34,9 @@ export const createVendor = async (data: CreateVendorData) => {
       name: data.name,
       location: data.location,
       email: data.email,
+      reliability: data.reliability,
+      latitude: data.latitude,
+      longitude: data.longitude,
     },
     include: {
       offers: true,

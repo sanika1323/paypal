@@ -5,6 +5,8 @@ export const createEmergencySchema = z.object({
   description: z.string().trim().max(2000).optional(),
   location: z.string().trim().min(2).max(200),
   severity: z.string().trim().min(1).max(50),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
 });
 
 export const updateEmergencySchema = createEmergencySchema

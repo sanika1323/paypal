@@ -1,0 +1,5 @@
+# Local only
+ReliefOS/_backup/
+node_modules/
+.env
+*.log

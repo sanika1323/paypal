@@ -1,6 +1,7 @@
 import { Menu, RefreshCw } from 'lucide-react'
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
 
+import { CoordinatorSignIn } from '../auth/CoordinatorSignIn'
 import { GlobalSearch } from './GlobalSearch'
 import { Notifications } from './Notifications'
 import { useConnection } from './useConnection'
@@ -31,6 +32,7 @@ export function Header({ onMenu }: { onMenu: () => void }) {
           <RefreshCw size={19} className={fetching ? 'spin' : undefined} />
         </button>
         <Notifications />
+        <CoordinatorSignIn />
       </div>
     </header>
   )

@@ -1,5 +1,6 @@
 
 import { prisma } from "../../config/database.js";
+import { generateDeliveriesSafely } from "../fulfilment/delivery.service.js";
 import {
   getInrUsdReferenceRate,
   convertInrToUsd,
@@ -17,7 +18,7 @@ type PayPalOrderResponse = {
   }>;
 };
 
-const getPayPalBaseUrl = (): string => {
+export const getPayPalBaseUrl = (): string => {
   const baseUrl =
     process.env.PAYPAL_BASE_URL ||
     "https://api-m.sandbox.paypal.com";
@@ -31,7 +32,7 @@ const getPayPalBaseUrl = (): string => {
   return baseUrl.replace(/\/+$/, "");
 };
 
-const getPayPalAccessToken = async (): Promise<string> => {
+export const getPayPalAccessToken = async (): Promise<string> => {
   const clientId = process.env.PAYPAL_CLIENT_ID?.trim();
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET?.trim();
 
@@ -957,7 +958,11 @@ export const captureProcurementPayPalOrder = async (
     return updated;
   });
 
+  // Captured funds trigger supplier → NGO delivery generation (idempotent, non-fatal).
+  const deliveries = await generateDeliveriesSafely(completedPayment.id);
+
   return {
+    deliveriesGenerated: deliveries?.count ?? 0,
     paymentId: completedPayment.id,
     status: completedPayment.status,
     captureId: completedPayment.paypalCaptureId,

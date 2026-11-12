@@ -8,10 +8,13 @@ import {
 reconcileMissingPayPalOrderController,
 } from "../controllers/payment.controller.js";
 
+import { requireCoordinator } from "../middleware/auth.js";
+
 const router = Router();
 
 router.post(
   "/plans/:planId/checkout",
+  requireCoordinator,
   createPaymentCheckoutController
 );
 
@@ -27,11 +30,13 @@ router.get(
 
 router.post(
   "/:paymentId/capture",
+  requireCoordinator,
   capturePaymentController
 );
 
 router.post(
   "/:paymentId/reconcile-missing-order",
+  requireCoordinator,
   reconcileMissingPayPalOrderController
 );
 

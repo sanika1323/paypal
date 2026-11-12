@@ -60,6 +60,8 @@ export interface Emergency {
   location: string
   severity: string
   isActive: boolean
+  latitude: number | null
+  longitude: number | null
   createdAt: IsoDate
   _count?: { requests: number; plans: number }
 }
@@ -70,6 +72,8 @@ export interface Organization {
   type: OrganizationType
   email: string
   location: string | null
+  latitude: number | null
+  longitude: number | null
   createdAt: IsoDate
   updatedAt: IsoDate
   _count?: { requests: number; allocations: number }
@@ -90,6 +94,8 @@ export interface Vendor {
   location: string
   email: string | null
   reliability: number
+  latitude: number | null
+  longitude: number | null
   createdAt: IsoDate
   _count?: { offers: number }
 }
@@ -101,6 +107,8 @@ export interface VendorOffer {
   unitPrice: DecimalString
   capacity: number
   deliveryDays: number
+  isAvailable: boolean
+  validUntil: IsoDate | null
   createdAt: IsoDate
 }
 
@@ -201,6 +209,8 @@ export interface ProcurementPlan {
   totalBudget: DecimalString
   totalCost: DecimalString
   status: ProcurementStatus
+  version: number
+  revisionOfId: string | null
   explanation: string | null
   createdAt: IsoDate
   updatedAt: IsoDate
@@ -208,6 +218,8 @@ export interface ProcurementPlan {
   items: ProcurementPlanItem[]
   approvals: Approval[]
   payments: Payment[]
+  revisionOf?: { id: string; name: string; status: ProcurementStatus } | null
+  revisions?: Array<{ id: string; name: string; status: ProcurementStatus; createdAt: IsoDate }>
 }
 
 export interface PendingApproval extends Approval {
@@ -293,8 +305,17 @@ export interface OptimizationResult {
   products: OptimizedProduct[]
   supplierPurchases: OptimizedPurchase[]
   ngoAllocations: NgoAllocation[]
+  excludedOffers: ExcludedOffer[]
+  inputFingerprint: string
   optimizationMethod: string
   isPreview: true
+}
+
+export interface ExcludedOffer {
+  offerId: string
+  vendorName: string
+  productName: string
+  reason: string
 }
 
 export interface DemandAgentResult {
@@ -306,7 +327,9 @@ export interface DemandAgentResult {
     participatingOrganizations: number
     distinctProducts: number
     totalDemand: number
+    duplicateOrConflictingGroups: number
   }
+  issues: DemandIssue[]
   products: Array<{
     productId: string
     productName: string
@@ -315,6 +338,7 @@ export interface DemandAgentResult {
     totalQuantity: number
     requestCount: number
     averageUrgency: number
+    maxUrgency: number
     organizations: Array<{
       requestId: string
       organizationId: string
@@ -328,6 +352,25 @@ export interface DemandAgentResult {
   }>
   methodology: string
   generatedAt: IsoDate
+}
+
+export interface DemandIssue {
+  type: 'DUPLICATE_REQUEST' | 'CONFLICTING_QUANTITIES'
+  organizationId: string
+  organizationName: string
+  productId: string
+  productName: string
+  requestIds: string[]
+  quantities: number[]
+  message: string
+}
+
+export interface UnusableOffer {
+  offerId: string
+  vendorName: string
+  productName: string
+  state: 'UNAVAILABLE' | 'EXPIRED' | 'NO_CAPACITY'
+  validUntil: IsoDate | null
 }
 
 export interface EvaluatedOffer {
@@ -345,6 +388,10 @@ export interface EvaluatedOffer {
   remainingDemand: number
   capacitySufficient: boolean
   estimatedCostForAvailableQuantity: DecimalString
+  reliabilityRated: boolean
+  recentFailures: number
+  riskScore: number
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH'
 }
 
 export interface SupplierProductAnalysis {
@@ -373,6 +420,8 @@ export interface SupplierAgentResult {
   emergency: EmergencySummary
   summary: SupplierAgentSummary
   products: SupplierProductAnalysis[]
+  unusableOffers: UnusableOffer[]
+  riskMethod: string
   methodology: string
   generatedAt: IsoDate
 }
@@ -403,6 +452,16 @@ export interface FulfilmentDelivery {
 
 export interface FulfilmentPlan {
   planId: string
+  planVersion: number
+  quantities: {
+    allocated: number
+    purchased: number
+    dispatched: number
+    delivered: number
+    delayed: number
+    failedOrShort: number
+  }
+  blockers: string[]
   planName: string
   planStatus: ProcurementStatus
   totalBudget: DecimalString
@@ -463,47 +522,6 @@ export interface FulfilmentAgentResult {
   generatedAt: IsoDate
 }
 
-export type AgentName =
-  | 'DEMAND_AGENT'
-  | 'SUPPLIER_AGENT'
-  | 'ALLOCATION_AGENT'
-  | 'FULFILMENT_AGENT'
-
-export interface OrchestratorStage {
-  agent: AgentName
-  status: 'COMPLETED' | 'FAILED' | 'SKIPPED'
-  startedAt: IsoDate
-  completedAt: IsoDate
-  durationMs: number
-  error?: string
-  summary?: unknown
-}
-
-export interface OrchestratorResult {
-  workflow: 'RELIEFOS_PROCUREMENT_ORCHESTRATOR'
-  status: 'COMPLETED' | 'PARTIAL'
-  emergencyId: string
-  input: { budget: DecimalString; maxDeliveryDays: number | null }
-  execution: {
-    startedAt: IsoDate
-    completedAt: IsoDate
-    durationMs: number
-    totalStages: number
-    completedStages: number
-    failedStages: number
-    skippedStages: number
-  }
-  stages: OrchestratorStage[]
-  results: {
-    demand: DemandAgentResult | null
-    suppliers: SupplierAgentResult | null
-    allocationPreview: AllocationAgentResult | null
-    existingFulfilmentState: FulfilmentAgentResult | null
-  }
-  importantNotes: string[]
-  audit: { persisted: boolean; error: string | null }
-}
-
 /* ---------- Payments ---------- */
 
 export interface CheckoutResult {
@@ -540,4 +558,68 @@ export interface CaptureResult {
   amount?: DecimalString
   currency?: string
   alreadyCompleted: boolean
+  deliveriesGenerated?: number
+}
+
+/* ---------- Deliveries / audit / auth ---------- */
+
+export interface Delivery {
+  id: string
+  paymentId: string | null
+  procurementPurchaseId: string | null
+  allocationId: string | null
+  trackingRef: string | null
+  destination: string
+  quantity: number
+  dispatchedQuantity: number
+  deliveredQuantity: number
+  status: DeliveryStatus
+  estimatedAt: IsoDate | null
+  deliveredAt: IsoDate | null
+  failureReason: string | null
+  delayReason: string | null
+  receivedBy: string | null
+  receivedAt: IsoDate | null
+  receiptNotes: string | null
+  createdAt: IsoDate
+  updatedAt: IsoDate
+  procurementPurchase: {
+    id: string
+    deliveryDays: number
+    vendorOffer: VendorOffer & { vendor: Vendor; product: Product }
+    planItem: { id: string; planId: string; unit: string }
+  } | null
+  allocation: { id: string; organization: Organization } | null
+  payment: {
+    id: string
+    planId: string
+    status: PaymentStatus
+    paypalOrderId: string | null
+    paypalCaptureId: string | null
+    plan: { id: string; name: string; status: ProcurementStatus; emergencyId: string; emergency: { name: string } }
+  } | null
+  failureEvents: Array<{ id: string; type: string; isSimulation: boolean; reason: string; createdAt: IsoDate }>
+}
+
+export interface DeliveryDetail {
+  delivery: Delivery
+  timeline: AuditLog[]
+}
+
+export interface DeliveryUpdateResult {
+  delivery: Delivery
+  planCompleted: boolean
+}
+
+export interface ReceiptResult extends DeliveryUpdateResult {
+  shortfall: number
+}
+
+export interface AuditLog {
+  id: string
+  action: string
+  entityType: string
+  entityId: string
+  details: Record<string, unknown> | null
+  createdAt: IsoDate
 }

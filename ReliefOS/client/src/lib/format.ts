@@ -70,5 +70,5 @@ export function formatRelative(value: string | null | undefined, now = Date.now(
 /** "PENDING_APPROVAL" -> "Pending approval" */
 export function humanize(value: string): string {
   const text = value.toLowerCase().replaceAll('_', ' ')
-  return text.charAt(0).toUpperCase() + text.slice(1)
+  return (text.charAt(0).toUpperCase() + text.slice(1)).replace(/\bai\b/gi, 'AI').replace(/\bpaypal\b/gi, 'PayPal')
 }

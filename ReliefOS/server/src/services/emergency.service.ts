@@ -5,6 +5,8 @@ export const createEmergency = async (data: {
   description?: string;
   location: string;
   severity: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }) => {
   return prisma.emergency.create({
     data,
@@ -63,6 +65,8 @@ export const updateEmergency = async (
     description?: string;
     location?: string;
     severity?: string;
+    latitude?: number | null;
+    longitude?: number | null;
   }
 ) => {
   return prisma.emergency.update({

@@ -6,12 +6,15 @@ type CreateVendorOfferData = {
   unitPrice: string;
   capacity: number;
   deliveryDays: number;
+  validUntil?: Date | null;
 };
 
 type UpdateVendorOfferData = {
   unitPrice?: string;
   capacity?: number;
   deliveryDays?: number;
+  isAvailable?: boolean;
+  validUntil?: Date | null;
 };
 
 export const createVendorOffer = async (
@@ -40,6 +43,7 @@ export const createVendorOffer = async (
       unitPrice: data.unitPrice,
       capacity: data.capacity,
       deliveryDays: data.deliveryDays,
+      validUntil: data.validUntil ?? null,
     },
     include: {
       vendor: true,

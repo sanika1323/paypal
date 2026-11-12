@@ -91,6 +91,8 @@ export const runDemandAgent = async (
         totalQuantity,
         requestCount: productRequests.length,
         averageUrgency,
+        maxUrgency: Math.max(...productRequests.map((r) => r.urgency)),
+        priority: Math.max(...productRequests.map((r) => r.urgency)) >= 4 ? "HIGH" : "NORMAL",
         organizations: productRequests.map(
           (request) => ({
             requestId: request.id,
@@ -106,6 +108,32 @@ export const runDemandAgent = async (
       };
     }
   );
+
+  // Duplicate / conflicting requests: the same NGO asking for the same product more than once.
+  // Reported only; original requests are never modified.
+  const byOrgProduct = new Map<string, typeof requests>();
+  for (const request of requests) {
+    const key = `${request.organizationId}:${request.productId}`;
+    byOrgProduct.set(key, [...(byOrgProduct.get(key) ?? []), request]);
+  }
+  const issues = [...byOrgProduct.values()]
+    .filter((group) => group.length > 1)
+    .map((group) => {
+      const quantities = [...new Set(group.map((r) => r.quantity))];
+      return {
+        type: quantities.length === 1 ? ("DUPLICATE_REQUEST" as const) : ("CONFLICTING_QUANTITIES" as const),
+        organizationId: group[0]!.organizationId,
+        organizationName: group[0]!.organization.name,
+        productId: group[0]!.productId,
+        productName: group[0]!.product.name,
+        requestIds: group.map((r) => r.id),
+        quantities: group.map((r) => r.quantity),
+        message:
+          quantities.length === 1
+            ? `${group.length} identical requests; may double-count demand.`
+            : `${group.length} requests with different quantities; confirm the intended total.`,
+      };
+    });
 
   const totalDemand = products.reduce(
     (sum, product) => sum + product.totalQuantity,
@@ -132,8 +160,10 @@ export const runDemandAgent = async (
       participatingOrganizations: organizationIds.length,
       distinctProducts: products.length,
       totalDemand,
+      duplicateOrConflictingGroups: issues.length,
     },
-    products,
+    products: [...products].sort((a, b) => b.maxUrgency - a.maxUrgency),
+    issues,
     methodology:
       "Eligible NGO requests are grouped by product. Quantities are summed, while organization-level requirements and urgency are preserved.",
     generatedAt: new Date().toISOString(),
