@@ -9,7 +9,7 @@ propose a revised plan, an independent agent re-validates it on fresh data, and 
 
 | | |
 |---|---|
-| Demo video | **YouTube: _add link_** (file: [submission/ReliefOS_Demo.mp4](submission/ReliefOS_Demo.mp4)) |
+| Demo video | **YouTube: https://youtu.be/lyaBco3FCW8** (file: [submission/ReliefOS_Demo.mp4](submission/ReliefOS_Demo.mp4)) |
 | Code | `ReliefOS/` (this repository) |
 | License | [MIT](LICENSE) |
 | Submission text | [Project description (PDF)](submission/ReliefOS_Project_Description.pdf) · [Tools used (PDF)](submission/ReliefOS_Tools_Used.pdf) · [SUBMISSION.md](SUBMISSION.md) |

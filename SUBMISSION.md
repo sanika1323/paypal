@@ -86,4 +86,4 @@ python · fastapi · mcp · groq · gpt-oss · frankfurter
 
 ## Links
 - Repository: https://github.com/sanika1323/paypal
-- Demo video: _add YouTube link_
+- Demo video: https://youtu.be/lyaBco3FCW8
